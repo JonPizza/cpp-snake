@@ -35,12 +35,13 @@ class SnakeGame {
         int midX = (int) WIDTH / 2;
         int midY = (int) HEIGHT / 2;
 
+        snakeCoords[0].push_back(midX - 16);
         snakeCoords[0].push_back(midX - 15);
         snakeCoords[0].push_back(midX - 14);
         snakeCoords[0].push_back(midX - 13);
         snakeCoords[0].push_back(midX - 12);
 
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 5; i++)
             snakeCoords[1].push_back(midY);
 
         foodX = midX + 10;
@@ -186,4 +187,6 @@ int main() {
     
     endwin();
     printf("Length -> %ld\n", snake.snakeCoords[0].size() + 1);
+
+    return 0;
 }
