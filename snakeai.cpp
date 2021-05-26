@@ -7,19 +7,23 @@
 #include <ncurses.h>
 #include <unistd.h>
 
-#define HEIGHT 58
-#define WIDTH 238
+#define HEIGHT 40
+#define WIDTH 125
 
-#define SNAKES 1000
-#define ONWARD_SNAKES 10
+#define SNAKES 2000
+#define ONWARD_SNAKES 15
 
-#define SEED 0x6942069
+#define SEED 0x9206420
 
-#define L1 8
-#define L2 16
+#define L1 6
+#define L2 14
 #define L3 4
 
 using namespace std;
+
+float sigmoid(float x) {
+    return 1 / (1 + pow(2.718281828459045, x * -1));
+}
 
 class SnakeGame {
     public:
@@ -36,7 +40,7 @@ class SnakeGame {
     }
 
     void init() {
-        srand(SEED);
+        // srand(SEED);
         int midX = (int) WIDTH / 2;
         int midY = (int) HEIGHT / 2;
 
@@ -54,7 +58,7 @@ class SnakeGame {
     } 
 
     int collided(int newHead[2]) {
-        if (newHead[0] < 0 || newHead[0] > WIDTH || newHead[1] < 0 || newHead[1] > HEIGHT) {
+        if (newHead[0] < 0 || newHead[0] >= WIDTH || newHead[1] < 0 || newHead[1] >= HEIGHT) {
             return 1;
         }
 
@@ -66,53 +70,36 @@ class SnakeGame {
         return 0;
     }
 
-    int tileOccupied(int x, int y) {
-        for (int i = 0; i < snakeCoords[0].size(); i++) {
-            for (int j = 0; i < snakeCoords[1].size(); i++) {
-                if (snakeCoords[0][i] == x && snakeCoords[1][j] == y) {
-                    return 1;
-                }
-            }
+    int collided(int x, int y) {
+        int newHead[2] = { x, y };
+        if (newHead[0] < 0 || newHead[0] >= WIDTH || newHead[1] < 0 || newHead[1] >= HEIGHT) {
+            return 1;
         }
-        return 0;
-    }
 
-    int getOpenTiles(char dir) {
-        switch (dir) {
-            case 'l': {
-                for (int i = snakeCoords[0].back(); i >= 0; i--) {
-                    if (tileOccupied(i, snakeCoords[0].back()) || i == 0) {
-                        return snakeCoords[0].back() - i;
-                    }
-                }
-                break;
-            } case 'r': {
-                for (int i = snakeCoords[0].back(); i <= WIDTH; i++) {
-                    if (tileOccupied(i, snakeCoords[0].back()) || i == WIDTH) {
-                        return i - snakeCoords[0].back();
-                    }
-                }
-                break;
-            } case 'd': {
-                for (int i = snakeCoords[1].back(); i <= HEIGHT; i++) {
-                    if (tileOccupied(i, snakeCoords[0].back()) || i == HEIGHT) {
-                        return i - snakeCoords[0].back();
-                    }
-                }
-                break;
-            } case 'u': {
-                for (int i = snakeCoords[1].back(); i >= 0; i--) {
-                    if (tileOccupied(i, snakeCoords[0].back()) || i == 0) {
-                        return snakeCoords[1].back() - i;
-                    }
-                }
-                break;
+        for (int i = 0; i < snakeCoords[0].size(); i++) {
+            if (snakeCoords[0][i] == newHead[0] && snakeCoords[1][i] == newHead[1]) {
+                return 1;
             }
         }
         return -1;
     }
 
-    void drawState(WINDOW* win, int gen, int i) {
+    int getOpenTiles(char dir) {
+        switch (dir) {
+            case 'l': {
+                return collided(snakeCoords[0].back() - 1, snakeCoords[1].back());
+            } case 'r': {
+                return collided(snakeCoords[0].back() + 1, snakeCoords[1].back());
+            } case 'd': {
+                return collided(snakeCoords[0].back(), snakeCoords[1].back() + 1);
+            } case 'u': {
+                return collided(snakeCoords[0].back(), snakeCoords[1].back() - 1);
+            }
+        }
+        return -1;
+    }
+
+    void drawState(WINDOW* win, int gen, int i, float input[L1], int high) {
         attron(COLOR_PAIR(1));
         for (int y = 0; y < HEIGHT; y++) {
             mvhline(y, 0, ' ', WIDTH);
@@ -120,8 +107,15 @@ class SnakeGame {
 
         attron(COLOR_PAIR(0));
         char msg[50];
+
         sprintf(msg, "Gen: %d, Snake: %d, Tick: %d", gen, i, ticksLived);
         mvaddstr(0, 0, msg);
+
+        char inputs[300];
+        sprintf(inputs, "fX: %f, fY: %f, l: %f, r: %f, u: %f, d: %f, HIGH: %d", 
+                input[0], input[1], input[2], input[3], input[4], input[5], high);
+
+        mvaddstr(1, 0, inputs);
         
         mvaddch(foodY, foodX, '@');
 
@@ -167,14 +161,14 @@ class SnakeGame {
             }
         }
 
-        if (newHead[0] == foodX && newHead[1] == foodY) {
-            eaten += 3;
-            moveFood();
-        }
-
         if (collided(newHead)) {
             dead = 1;
             return;
+        }
+
+        if (newHead[0] == foodX && newHead[1] == foodY) {
+            eaten += 3;
+            moveFood();
         }
 
         snakeCoords[0].push_back(newHead[0]);
@@ -191,7 +185,8 @@ class NeuralNet {
     float layer3[L3];
     float weights1[L1 * L2];
     float weights2[L2 * L3];
-    float sigmoidBias;
+    float bias1[L2];
+    float bias2[L3];
 
     int max;
     float t;
@@ -202,12 +197,8 @@ class NeuralNet {
         return f - 1;
     }
 
-    float sigmoid(float x) {
-        return 1 / (1 + pow(e, x * -1));
-    }
-
-    float biasedSigmoid(float x) {
-        return 1 / (1 + sigmoidBias + pow(e, x * -1));
+    float biasedSigmoid(float x, float sigmoidBias) {
+        return 1 / (1 + pow(e, (x + sigmoidBias) * -1));
     }
 
     public:
@@ -216,10 +207,12 @@ class NeuralNet {
         for (int i = 0; i < L1 * L2; i++) {
             if (i < L2 * L3)
                 weights2[i] = getRand(); 
+            if (i < L2)
+                bias1[i] = getRand();
+            if (i < L3)
+                bias2[i] = getRand();
             weights1[i] = getRand(); 
         }
-
-        sigmoidBias = getRand() / 10.0;
     }
 
     void mutate(int mutationLevel) {
@@ -231,7 +224,13 @@ class NeuralNet {
             weights2[i] += getRand() / (float) mutationLevel;
         }
 
-        sigmoidBias += getRand() / (float) mutationLevel / 10.0;
+        for (int i = 0; i < L2; i++) {
+            bias1[i] = getRand() / (float) mutationLevel;
+        }
+
+        for (int i = 0; i < L3; i++) {
+            bias2[i] = getRand() / (float) mutationLevel;
+        }
     }
 
     int feedForward(float inputs[L1]) {
@@ -240,7 +239,7 @@ class NeuralNet {
             for (int j = 0; j < L1; j++) {
                 t += weights1[(i + 1) * j] * inputs[j];
             }
-            layer2[i] = biasedSigmoid(t);
+            layer2[i] = biasedSigmoid(t, bias1[i]);
         }
 
         for (int i = 0; i < L3; i++) {
@@ -248,7 +247,7 @@ class NeuralNet {
             for (int j = 0; j < L2; j++) {
                 t += weights2[(i + 1) * j] * layer2[j];
             }
-            layer3[i] = biasedSigmoid(t);
+            layer3[i] = biasedSigmoid(t, bias2[i]);
         }
 
         max = 0;
@@ -282,8 +281,9 @@ WINDOW* initCurses() {
 
 int main() {
     int i;
-    float input[8];
+    float input[L1];
     int output;
+    int high = 0;
 
     NeuralNet snakes[SNAKES];
     int scores[SNAKES];
@@ -301,21 +301,30 @@ int main() {
     int lastCh = -1;
 
     while (1) {
+        srand(time(0));
         for (i = 0; i < SNAKES; i++) {
             SnakeGame sg;
             sg.init();
 
             lastCh = 1;
 
-            while (!sg.dead && sg.ticksLived < 2000) {
-                input[0] = sg.foodX;
-                input[1] = sg.foodY;
-                input[2] = sg.snakeCoords[0].back();
-                input[3] = sg.snakeCoords[1].back();
-                input[4] = sg.getOpenTiles('l');
-                input[5] = sg.getOpenTiles('r');
-                input[6] = sg.getOpenTiles('u');
-                input[7] = sg.getOpenTiles('d');
+            while (!sg.dead && sg.ticksLived < 200 + 70 * sg.snakeCoords[0].size()) {
+                input[0] = sg.snakeCoords[0].back() - sg.foodX;
+                if (input[0] < 0) {
+                    input[0] -= 10;
+                } else if (input[0] > 0) {
+                    input[0] += 10;
+                }
+                input[1] = sg.snakeCoords[1].back() - sg.foodY;
+                if (input[1] < 0) {
+                    input[1] -= 10;
+                } else if (input[1] > 0) {
+                    input[1] += 10;
+                }
+                input[2] = sg.getOpenTiles('l');
+                input[3] = sg.getOpenTiles('r');
+                input[4] = sg.getOpenTiles('u');
+                input[5] = sg.getOpenTiles('d');
 
                 output = snakes[i].feedForward(input);
 
@@ -355,13 +364,17 @@ int main() {
                     }
                 }
                 
-                if (i % 149 == 0) {
-                    sg.drawState(win, gen, i);
-                    usleep(5500);
+                if (sg.snakeCoords[0].size() >= high && gen != 0) {
+                    sg.drawState(win, gen, i, input, high);
+                    usleep(25500);
                 }
             }
 
-            scores[i] = sg.snakeCoords[0].size() * 700 + sg.ticksLived + (WIDTH - abs(sg.snakeCoords[0].back() - sg.foodX)) + (HEIGHT - abs(sg.snakeCoords[1].back() - sg.foodY));
+            scores[i] = sg.snakeCoords[0].size() * 3000 + sg.ticksLived + (WIDTH - abs(sg.snakeCoords[0].back() - sg.foodX)) + (HEIGHT - abs(sg.snakeCoords[1].back() - sg.foodY));
+
+            if (sg.snakeCoords[0].size() > high) {
+                high = sg.snakeCoords[0].size();
+            }
         }
 
         for (i = 0; i < SNAKES; i++) {
@@ -373,8 +386,8 @@ int main() {
 
         for (i = 0; i < SNAKES; i++) {
             snakes[i] = snakes[highScores[rand() % ONWARD_SNAKES]];
-            if (i != 0) {
-                snakes[i].mutate(rand() % 100 + 1);
+            if (i >= ONWARD_SNAKES) {
+                snakes[i].mutate(1 + rand() % 1000);
             }
         }
 

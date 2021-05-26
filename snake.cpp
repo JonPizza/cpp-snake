@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #define HEIGHT 58
-#define WIDTH 238
+#define WIDTH 119
 
 using namespace std;
 
@@ -64,17 +64,17 @@ class SnakeGame {
     void drawState(WINDOW* win) {
         attron(COLOR_PAIR(1));
         for (int y = 0; y < HEIGHT; y++) {
-            mvhline(y, 0, ' ', WIDTH);
+            mvhline(y, 0, ' ', WIDTH * 2);
         }
         
-        mvaddch(foodY, foodX, '@');
+        mvaddstr(foodY, foodX * 2, "$$");
 
         attron(COLOR_PAIR(2));
         for (int i = 0; i < snakeCoords[0].size(); i++) {
             if (i == snakeCoords[0].size() - 1) {
-                mvaddch(snakeCoords[1][i], snakeCoords[0][i], ':');
+                mvaddstr(snakeCoords[1][i], snakeCoords[0][i] * 2, "''");
             } else {
-                mvaddch(snakeCoords[1][i], snakeCoords[0][i], ' ');
+                mvaddstr(snakeCoords[1][i], snakeCoords[0][i] * 2, "  ");
             }
         }
 
@@ -155,7 +155,7 @@ int main() {
 
     while (!snake.dead) {
         snake.drawState(win);
-        usleep(35000);
+        usleep(25500);
         newCh = getch();
 
         switch (newCh) {
