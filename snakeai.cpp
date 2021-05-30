@@ -10,13 +10,13 @@
 #define HEIGHT 40
 #define WIDTH 125
 
-#define SNAKES 2000
-#define ONWARD_SNAKES 15
+#define SNAKES 200
+#define ONWARD_SNAKES 5
 
 #define SEED 0x9206420
 
 #define L1 6
-#define L2 14
+#define L2 12
 #define L3 4
 
 using namespace std;
@@ -73,15 +73,15 @@ class SnakeGame {
     int collided(int x, int y) {
         int newHead[2] = { x, y };
         if (newHead[0] < 0 || newHead[0] >= WIDTH || newHead[1] < 0 || newHead[1] >= HEIGHT) {
-            return 1;
+            return 5;
         }
 
         for (int i = 0; i < snakeCoords[0].size(); i++) {
             if (snakeCoords[0][i] == newHead[0] && snakeCoords[1][i] == newHead[1]) {
-                return 1;
+                return 5;
             }
         }
-        return -1;
+        return -5;
     }
 
     int getOpenTiles(char dir) {
@@ -233,7 +233,7 @@ class NeuralNet {
         }
     }
 
-    int feedForward(float inputs[L1]) {
+    float *feedForward(float inputs[L1]) {
         for (int i = 0; i < L2; i++) {
             t = 0;
             for (int j = 0; j < L1; j++) {
@@ -241,7 +241,7 @@ class NeuralNet {
             }
             layer2[i] = biasedSigmoid(t, bias1[i]);
         }
-
+        
         for (int i = 0; i < L3; i++) {
             t = 0;
             for (int j = 0; j < L2; j++) {
@@ -250,14 +250,7 @@ class NeuralNet {
             layer3[i] = biasedSigmoid(t, bias2[i]);
         }
 
-        max = 0;
-        for (int i = 0; i < L3; i++) {
-            if (layer3[i] > layer3[max]) {
-                max = i;
-            }
-        }
-
-        return max;
+        return layer3;
     }
 };
 
@@ -282,7 +275,7 @@ WINDOW* initCurses() {
 int main() {
     int i;
     float input[L1];
-    int output;
+    float *output;
     int high = 0;
 
     NeuralNet snakes[SNAKES];
@@ -308,7 +301,7 @@ int main() {
 
             lastCh = 1;
 
-            while (!sg.dead && sg.ticksLived < 200 + 70 * sg.snakeCoords[0].size()) {
+            while (!sg.dead && sg.ticksLived < 500) {
                 input[0] = sg.snakeCoords[0].back() - sg.foodX;
                 if (input[0] < 0) {
                     input[0] -= 10;
@@ -321,18 +314,26 @@ int main() {
                 } else if (input[1] > 0) {
                     input[1] += 10;
                 }
+
                 input[2] = sg.getOpenTiles('l');
                 input[3] = sg.getOpenTiles('r');
                 input[4] = sg.getOpenTiles('u');
                 input[5] = sg.getOpenTiles('d');
 
                 output = snakes[i].feedForward(input);
+                int best = -1;
 
-                switch (output) {
+                for (int i = 0; i < L3; i++) {
+                    if ((best == -1 || output[i] >= output[best]) && input[i + 2] <= 0) {
+                        best = i;
+                    }
+                }                
+
+                switch (best) {
                     case 0: {
                         if (lastCh != 1) {
                             sg.update(KEY_LEFT);
-                            lastCh = output;
+                            lastCh = best;
                         } else {
                             sg.update(KEY_RIGHT);
                         }
@@ -340,7 +341,7 @@ int main() {
                     } case 1: {
                         if (lastCh != 0) {
                             sg.update(KEY_RIGHT);
-                            lastCh = output;
+                            lastCh = best;
                         } else {
                             sg.update(KEY_LEFT);
                         }
@@ -348,7 +349,7 @@ int main() {
                     } case 2: {
                         if (lastCh != 3) {
                             sg.update(KEY_UP);
-                            lastCh = output;
+                            lastCh = best;
                         } else {
                             sg.update(KEY_DOWN);
                         }
@@ -356,7 +357,7 @@ int main() {
                     } case 3: {
                         if (lastCh != 2) {
                             sg.update(KEY_DOWN);
-                            lastCh = output;
+                            lastCh = best;
                         } else {
                             sg.update(KEY_UP);
                         }
@@ -364,13 +365,17 @@ int main() {
                     }
                 }
                 
-                if (sg.snakeCoords[0].size() >= high && gen != 0) {
+                if ((sg.snakeCoords[0].size() >= high && gen != 0) || (i == 0 && gen % 5 == 0)) {
                     sg.drawState(win, gen, i, input, high);
-                    usleep(25500);
+                    usleep(12500);
                 }
             }
 
-            scores[i] = sg.snakeCoords[0].size() * 3000 + sg.ticksLived + (WIDTH - abs(sg.snakeCoords[0].back() - sg.foodX)) + (HEIGHT - abs(sg.snakeCoords[1].back() - sg.foodY));
+            if (gen < 50) {
+                scores[i] = sg.snakeCoords[0].size() * 3000 + sg.ticksLived + (WIDTH - abs(sg.snakeCoords[0].back() - sg.foodX)) + (HEIGHT - abs(sg.snakeCoords[1].back() - sg.foodY));
+            } else {
+                scores[i] = sg.snakeCoords[0].size() * 3000 + sg.ticksLived;
+            }
 
             if (sg.snakeCoords[0].size() > high) {
                 high = sg.snakeCoords[0].size();
@@ -387,7 +392,7 @@ int main() {
         for (i = 0; i < SNAKES; i++) {
             snakes[i] = snakes[highScores[rand() % ONWARD_SNAKES]];
             if (i >= ONWARD_SNAKES) {
-                snakes[i].mutate(1 + rand() % 1000);
+                snakes[i].mutate(1 + rand() % 2000 + gen / 50);
             }
         }
 
